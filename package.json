@@ -1,0 +1,59 @@
+{
+  "name": "image-burner",
+  "version": "1.2.0",
+  "description": "A modern Linux application for creating bootable USB drives (Windows & Linux)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "usb",
+    "bootable",
+    "iso",
+    "linux",
+    "windows",
+    "rufus",
+    "installer"
+  ],
+  "author": "Esa Porttila <pikaeetu72@gmail.com>",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/esapo/image-burner"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.imageburner.app",
+    "productName": "Image Burner",
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Utility",
+      "synopsis": "Create bootable USB drives for Linux and Windows",
+      "description": "A modern, user-friendly application for creating bootable USB drives on Linux. Supports both Linux distributions and Windows 10/11 installation media with Rufus-style UEFI boot.",
+      "desktop": {
+        "Name": "Image Burner",
+        "Comment": "Create bootable USB drives",
+        "Categories": "System;Utility;",
+        "Keywords": "usb;bootable;iso;img;nrg;windows;linux;"
+      }
+    },
+    "files": [
+      "main.js",
+      "create_win_usb.sh",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "style.css",
+      "icon.png"
+    ]
+  }
+}

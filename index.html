@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Burner</title>
+    <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+    <!-- About Modal -->
+    <div class="modal" id="aboutModal">
+        <div class="modal-content" style="max-width: 500px; text-align: center;">
+            <h2>🔥 Image Burner</h2>
+            <div class="version-info">Version 1.2.0</div>
+            <div class="platform-badge">🐧 Linux Only</div>
+            <p><strong>Create bootable USB drives for Linux and Windows</strong></p>
+            <p>A modern, user-friendly application for creating bootable USB drives on Linux systems. Supports both Linux distributions and Windows installation media.</p>
+            
+            <div class="credits">
+                <p><strong>Features:</strong></p>
+                <p>✓ Linux ISO support (Ubuntu, Fedora, Debian, etc.)<br>
+                ✓ Windows 10/11 bootable USB (WoeUSB-style)<br>
+                ✓ UEFI:NTFS bootloader for maximum compatibility<br>
+                ✓ Compressed .img.gz file support (auto-decompress)<br>
+                ✓ Nero (.nrg) file support with auto-conversion<br>
+                ✓ SHA256 checksum verification<br>
+                ✓ Safe Mode & Advanced Mode<br>
+                ✓ Real-time progress tracking<br>
+                ✓ Proper partition table refresh (fixes Nemo/Nautilus)</p>
+                
+                <p style="margin-top: 20px;"><strong>Platform Requirements:</strong></p>
+                <p>This application is designed exclusively for Linux and requires:<br>
+                • parted, dd, mkfs.ntfs, mkfs.vfat<br>
+                • rsync, wipefs, lsblk<br>
+                • wget or curl (for UEFI:NTFS download)<br>
+                • PolicyKit (pkexec) for admin rights<br>
+                • GRUB or syslinux (optional) for Legacy BIOS support<br>
+                • nrg2iso (optional) for Nero file conversion</p>
+                
+                <p style="margin-top: 20px;"><strong>Why Linux-only?</strong></p>
+                <p>While Rufus is excellent for Windows, Linux lacks a good tool for creating Windows installation USB drives. This app fills that gap with the same proven UEFI:NTFS method!</p>
+                
+                <p style="margin-top: 20px;"><strong>Third-Party Components:</strong></p>
+                <p style="font-size: 0.85em;">
+                • Electron Framework (MIT License)<br>
+                • Node.js (MIT License)<br>
+                • UEFI:NTFS bootloader from <a href="https://github.com/pbatard/rufus" target="_blank" style="color: #007bff;">Rufus Project</a> (GPL-3.0+)<br>
+                • Various GNU/Linux system utilities (GPL/LGPL)<br>
+                <br>
+                See NOTICE file for full attribution details.
+                </p>
+                
+                <p style="margin-top: 20px;"><strong>License:</strong> GPL-3.0</p>
+                <p><strong>Built with:</strong> Electron, Node.js</p>
+            </div>
+            
+            <button class="modal-close" id="closeAbout">Close</button>
+        </div>
+    </div>
+
+    <!-- Flash Modal -->
+    <div class="modal" id="flashModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Select Drive & Flash</h2>
+                <span class="close-x" id="closeFlash">&times;</span>
+            </div>
+
+            <div class="advanced-warning" id="advancedWarningModal">
+                <strong>⚠️ Advanced Mode Enabled</strong><br>
+                All drives including system drives are visible. Use with extreme caution!
+            </div>
+            
+            <label class="toggle-switch" id="toggleSwitchContainerModal">
+                <div class="toggle-content">
+                    <span class="toggle-label" id="modeLabelModal">🛡️ Safe Mode</span>
+                </div>
+                <input type="checkbox" id="advancedModeToggleModal">
+            </label>
+            
+            <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                Safe Mode shows only removable USB drives. Toggle to Advanced Mode to see all drives.
+            </p>
+            
+            <button class="button" id="refreshDrivesBtnModal" style="margin-top: 15px;">Refresh Drives</button>
+            
+            <div class="drive-list" id="driveListModal"></div>
+            
+            <div class="warning" style="display: none; margin-top: 15px;" id="warningMessageModal">
+                <strong>⚠️ WARNING</strong>
+                All data on the selected drive will be permanently erased!
+            </div>
+
+            <button class="button danger" id="writeBtnModal" disabled style="margin-top: 20px;">Flash!</button>
+            
+            <div id="progressSectionModal" style="display: none;" class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFillModal" style="width: 0%;">
+                        <span id="progressPercentModal">0%</span>
+                    </div>
+                </div>
+                <div class="progress-text" id="progressTextModal">Preparing...</div>
+                <div class="log-output" id="logOutputModal"></div>
+            </div>
+
+            <div id="successMessageModal" style="display: none;" class="success-message">
+                <h3>✅ Success!</h3>
+                <p>Your bootable drive has been created successfully.</p>
+                <p>You can safely remove the USB drive.</p>
+                <button class="modal-close" id="closeSuccessModal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="app-header">
+            <div class="header">
+                <h1>🔥 Image Burner</h1>
+                <p class="subtitle">Create bootable USB drives for Linux and Windows</p>
+            </div>
+            <div class="header-buttons">
+                <button class="about-button" id="aboutBtn">About</button>
+                <button class="quit-button" id="quitBtn">Quit</button>
+            </div>
+        </div>
+
+        <!-- Step 1: Select Image -->
+        <div class="step active" id="step1">
+            <div class="step-header">
+                <div class="step-number">1</div>
+                <div class="step-title">Select Image</div>
+            </div>
+            
+            <!-- Tab Selection -->
+            <div class="tab-container">
+                <button class="tab-button active" id="localFileTab">📁 Local File</button>
+                <button class="tab-button" id="urlTab">🌐 Download from URL</button>
+            </div>
+            
+            <!-- Local File Tab -->
+            <div class="tab-content active" id="localFileContent">
+                <button class="button" id="selectImageBtn">Choose ISO/IMG/NRG/GZ File</button>
+            </div>
+            
+            <!-- URL Download Tab -->
+            <div class="tab-content" id="urlContent">
+                <div style="margin-bottom: 15px;">
+                    <label for="imageUrl" style="display: block; margin-bottom: 5px; font-weight: 600;">Enter Image URL:</label>
+                    <input 
+                        type="text" 
+                        id="imageUrl" 
+                        placeholder="https://releases.ubuntu.com/22.04/ubuntu-22.04.3-desktop-amd64.iso"
+                        style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;"
+                    />
+                    <div id="urlValidation" style="margin-top: 5px; font-size: 0.9em;"></div>
+                </div>
+                
+                <!-- Download Method Selection -->
+                <div style="margin: 15px 0; padding: 12px; background: #f0f8ff; border-left: 4px solid #007bff; border-radius: 4px;">
+                    <strong style="display: block; margin-bottom: 8px;">Download Method:</strong>
+                    <label style="display: block; margin-bottom: 8px; cursor: pointer;">
+                        <input type="radio" name="downloadMethod" value="download-first" checked style="margin-right: 8px;">
+                        <strong>Download first, then burn</strong> (Safer - Can verify, retry if fails)
+                    </label>
+                    <label style="display: block; cursor: pointer;">
+                        <input type="radio" name="downloadMethod" value="stream-to-usb" style="margin-right: 8px;">
+                        <strong>Stream directly to USB</strong> ⚡ (Faster - No disk space needed, but can't retry)
+                    </label>
+                    <div id="streamWarning" style="display: none; margin-top: 8px; padding: 8px; background: #fff3cd; border-left: 3px solid #ff9800; font-size: 0.9em;">
+                        <strong>⚠️ Warning:</strong> Streaming mode cannot verify checksums or retry on failure. Choose this only if you trust the source and have a stable connection.
+                    </div>
+                </div>
+                
+                <button class="button" id="downloadUrlBtn">⬇️ Download</button>
+                <button class="button" id="cancelDownloadBtn" style="display: none; background: #dc3545;">❌ Cancel Download</button>
+                
+                <div id="downloadProgress" style="display: none; margin-top: 15px;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="downloadProgressFill" style="width: 0%;">
+                            <span id="downloadProgressPercent">0%</span>
+                        </div>
+                    </div>
+                    <div class="progress-text" id="downloadProgressText">Preparing...</div>
+                    <div id="downloadStats" style="margin-top: 10px; font-size: 0.9em; color: #666;"></div>
+                </div>
+                
+                <!-- Popular Downloads -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <strong style="display: block; margin-bottom: 10px;">📌 Popular Downloads:</strong>
+                    <div style="font-size: 0.9em;">
+                        <a href="#" class="quick-link" data-url="https://pub.linuxmint.io/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso">Linux Mint 22.2 Cinnamon, </a>
+                        <a href="#" class="quick-link" data-url="https://releases.ubuntu.com/noble/ubuntu-24.04.3-desktop-amd64.iso">Ubuntu 24.04.3 LTS Desktop, </a>
+                        <a href="#" class="quick-link" data-url="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.1.0-amd64-netinst.iso">Debian 13 netinstall, </a>
+                        <a href="#" class="quick-link" data-url="https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/x86_64/iso/Fedora-Workstation-Live-42-1.1.x86_64.iso">Fedora 42 Workstation</a>
+                    </div>
+                    <p style="margin-top: 10px; font-size: 0.85em; color: #666;">💡 Tip: Always verify checksums from official sources!</p>
+                </div>
+            </div>
+            
+            <!-- Image Info (shown after selection or download) -->
+            <div id="imageInfo" style="display: none;" class="file-info">
+                <div class="info-row">
+                    <span class="info-label">File:</span>
+                    <span class="info-value" id="imageName"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Size:</span>
+                    <span class="info-value" id="imageSize"></span>
+                </div>
+                <div class="info-row" id="imageSourceRow" style="display: none;">
+                    <span class="info-label">Source:</span>
+                    <span class="info-value" id="imageSource"></span>
+                </div>
+                
+                <div class="image-type-selector">
+                    <div class="type-option" data-type="linux">
+                        <div class="type-icon">🐧</div>
+                        <div><strong>Linux</strong></div>
+                        <div style="font-size: 0.9em; color: #666;">Ubuntu, Fedora, Debian, etc.</div>
+                    </div>
+                    <div class="type-option" data-type="windows">
+                        <div class="type-icon">🪟</div>
+                        <div><strong>Windows</strong></div>
+                        <div style="font-size: 0.9em; color: #666;">Windows 10/11 installer</div>
+                    </div>
+                </div>
+
+                <div class="checksum-section">
+                    <button class="button" id="calculateChecksumBtn" style="margin-top: 10px;">Calculate Checksum (SHA256)</button>
+                    <div id="checksumResult" style="display: none;" class="checksum-result"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Select Drive & Flash -->
+        <div class="step" id="step2">
+            <div class="step-header">
+                <div class="step-header-left">
+                    <div class="step-number">2</div>
+                    <div class="step-title">Select Drive & Flash</div>
+                </div>
+            </div>
+            
+            <button class="button" id="openFlashModal">Open Drive Selection</button>
+            <p style="margin-top: 15px; color: #666; font-size: 0.95em;">
+                📋 Click the button above to select your USB drive and start flashing in a popup window.
+            </p>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
