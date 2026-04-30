@@ -6,6 +6,7 @@ start_time=$(date +%s)
 
 ISO_PATH="$1"
 USB_BLOCK="$2"
+APP_DIR="${3:-}"
 
 echo "Checking prerequisites..."
 
@@ -51,8 +52,10 @@ for partition in ${USB_BLOCK}* ; do
   fi
 done
 
-# Step 2: Kill any processes using the device
-fuser -km "$USB_BLOCK" 2>/dev/null || true
+# Step 2: Kill any processes using the device (SIGTERM first, then SIGKILL)
+fuser -k "$USB_BLOCK" 2>/dev/null || true
+sleep 1
+fuser -k -9 "$USB_BLOCK" 2>/dev/null || true
 sleep 1
 
 # Step 3: Zero out the beginning of the disk (first 10MB)
@@ -189,18 +192,28 @@ sleep 2
 echo "💾 Installing UEFI:NTFS..."
 mount "${USB_BLOCK}2" "$UEFI_MOUNT"
 
-if command -v wget >/dev/null 2>&1; then
-  wget -q --show-progress -O "$UEFI_NTFS_IMG" "$UEFI_NTFS_URL" 2>/dev/null || true
-elif command -v curl >/dev/null 2>&1; then
-  curl -sL -o "$UEFI_NTFS_IMG" "$UEFI_NTFS_URL" 2>/dev/null || true
+# Prefer a bundled copy shipped with the app (no network needed).
+# APP_DIR is passed from main.js as $3 — the Electron app's __dirname.
+# Fall back to downloading from GitHub if the bundled copy is missing.
+if [ -n "$APP_DIR" ] && [ -f "$APP_DIR/uefi-ntfs.img" ]; then
+  echo "✓ Using bundled uefi-ntfs.img from $APP_DIR"
+  cp "$APP_DIR/uefi-ntfs.img" "$UEFI_NTFS_IMG"
+else
+  echo "ℹ️  Bundled uefi-ntfs.img not found – downloading from GitHub..."
+  if command -v wget >/dev/null 2>&1; then
+    wget -q --show-progress -O "$UEFI_NTFS_IMG" "$UEFI_NTFS_URL" 2>/dev/null || true
+  elif command -v curl >/dev/null 2>&1; then
+    curl -sL -o "$UEFI_NTFS_IMG" "$UEFI_NTFS_URL" 2>/dev/null || true
+  fi
 fi
 
-if [ -f "$UEFI_NTFS_IMG" ]; then
+if [ -f "$UEFI_NTFS_IMG" ] && [ -s "$UEFI_NTFS_IMG" ]; then
   umount "$UEFI_MOUNT"
   dd if="$UEFI_NTFS_IMG" of="${USB_BLOCK}2" bs=1M status=progress conv=fsync
   rm -f "$UEFI_NTFS_IMG"
   echo "✅ UEFI:NTFS installed"
 else
+  echo "⚠️  uefi-ntfs.img not available – falling back to EFI copy from ISO"
   mount "${USB_BLOCK}1" "$NTFS_MOUNT"
   mkdir -p "$UEFI_MOUNT/EFI/Boot"
   cp "$NTFS_MOUNT/efi/boot/bootx64.efi" "$UEFI_MOUNT/EFI/Boot/" 2>/dev/null || true

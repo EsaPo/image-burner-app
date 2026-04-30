@@ -3,8 +3,48 @@ let selectedDrive = null;
 let imageType = null;
 let advancedMode = false;
 
+// Safely escape HTML entities to prevent XSS when inserting script output into the DOM
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Append a line of script output safely to a log element
+function appendLog(logElement, text) {
+  logElement.innerHTML += escapeHTML(text).replace(/\n/g, '<br>') + '<br>';
+  logElement.scrollTop = logElement.scrollHeight;
+}
+
 // Check if electronAPI is available
 console.log('Checking electronAPI:', window.electronAPI);
+
+// ── Theme toggle ──
+const themeBtn = document.getElementById('themeBtn');
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.body.classList.add('light');
+    themeBtn.textContent = '🌙 Dark';
+  } else {
+    document.body.classList.remove('light');
+    themeBtn.textContent = '☀️ Light';
+  }
+}
+
+// Load saved theme (falls back to dark)
+const savedTheme = localStorage.getItem('imageburner-theme') || 'dark';
+applyTheme(savedTheme);
+
+themeBtn.addEventListener('click', () => {
+  const isDark = !document.body.classList.contains('light');
+  const newTheme = isDark ? 'light' : 'dark';
+  localStorage.setItem('imageburner-theme', newTheme);
+  applyTheme(newTheme);
+});
 
 // About Modal
 document.getElementById('aboutBtn').addEventListener('click', () => {
@@ -73,15 +113,42 @@ document.getElementById('imageUrl').addEventListener('input', async (e) => {
   }
 });
 
-// Quick Links
-document.querySelectorAll('.quick-link').forEach(link => {
-  link.addEventListener('click', (e) => {
-    e.preventDefault();
-    const url = link.getAttribute('data-url');
-    document.getElementById('imageUrl').value = url;
-    document.getElementById('imageUrl').dispatchEvent(new Event('input'));
-  });
-});
+// Quick Links — loaded dynamically from downloads.json
+async function loadQuickLinks() {
+  const container = document.getElementById('quickLinkList');
+  if (!container) return;
+
+  try {
+    const response = await fetch('./downloads.json');
+    if (!response.ok) throw new Error('downloads.json not found');
+    const links = await response.json();
+
+    if (!Array.isArray(links) || links.length === 0) {
+      container.innerHTML = '<span style="color: var(--text-muted)">No downloads configured.</span>';
+      return;
+    }
+
+    container.innerHTML = links.map((item, i) => {
+      const separator = i < links.length - 1 ? ', ' : '';
+      return `<a href="#" class="quick-link" data-url="${item.url}">${item.name}</a>${separator}`;
+    }).join('');
+
+    // Attach click handlers
+    container.querySelectorAll('.quick-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById('imageUrl').value = link.getAttribute('data-url');
+        document.getElementById('imageUrl').dispatchEvent(new Event('input'));
+      });
+    });
+
+  } catch (err) {
+    console.warn('Could not load downloads.json:', err);
+    container.innerHTML = '<span style="color: var(--text-muted)">Could not load download list.</span>';
+  }
+}
+
+loadQuickLinks();
 
 // Download Method Selection
 document.querySelectorAll('input[name="downloadMethod"]').forEach(radio => {
@@ -183,10 +250,11 @@ async function handleNormalDownload(url) {
     document.getElementById('imageInfo').style.display = 'block';
     
     // Check for compression or special formats
-    if (image.isGZ) {
+    if (image.isGZ || image.isXZ) {
       const checksumResult = document.getElementById('checksumResult');
       checksumResult.style.display = 'block';
-      checksumResult.innerHTML = '<span style="color: #007bff; font-weight: bold;">ℹ️ Compressed .gz file detected</span><br>' +
+      const fmt = image.isXZ ? '.xz' : '.gz';
+      checksumResult.innerHTML = `<span style="color: #007bff; font-weight: bold;">ℹ️ Compressed ${fmt} file detected</span><br>` +
                                   'This file will be automatically decompressed while writing to the USB drive.';
     }
     
@@ -227,6 +295,14 @@ document.getElementById('cancelDownloadBtn').addEventListener('click', async () 
 
 // Stream to USB (download and burn on-the-fly)
 async function handleStreamToUSB(url) {
+  // Auto-detect image type from URL filename
+  const fileName = url.split('/').pop();
+  let detectedType = 'linux';
+  if (fileName.toLowerCase().includes('win')) {
+    alert('Windows images cannot be streamed directly.\nPlease use "Download first" method for Windows images.');
+    return;
+  }
+
   // First, need to select USB drive and image type
   if (!confirm(
     '⚡ STREAM TO USB MODE\n\n' +
@@ -239,14 +315,6 @@ async function handleStreamToUSB(url) {
     'You will select the USB drive next.\n\n' +
     'Continue?'
   )) {
-    return;
-  }
-  
-  // Auto-detect image type from URL
-  const fileName = url.split('/').pop();
-  let detectedType = 'linux';
-  if (fileName.toLowerCase().includes('win')) {
-    alert('Windows images cannot be streamed directly.\nPlease use "Download first" method for Windows images.');
     return;
   }
   
@@ -500,8 +568,7 @@ document.getElementById('writeBtnModal').addEventListener('click', async () => {
   
   window.electronAPI.onWriteProgress((data) => {
     if (data.output) {
-      logOutput.innerHTML += data.output.replace(/\n/g, '<br>') + '<br>';
-      logOutput.scrollTop = logOutput.scrollHeight;
+      appendLog(logOutput, data.output);
     }
     if (data.bytes) {
       const percent = Math.round((data.bytes / selectedImage.size) * 100);
@@ -532,7 +599,7 @@ document.getElementById('writeBtnModal').addEventListener('click', async () => {
     const errorMsg = error.message || 'Unknown error occurred';
     alert(`❌ ERROR\n\n${errorMsg}\n\nPlease check the log output for details.`);
     
-    logOutput.innerHTML += `<br><span style="color: #ff5555;">ERROR: ${errorMsg}</span><br>`;
+    logOutput.innerHTML += `<br><span style="color: #ff5555;">ERROR: ${escapeHTML(errorMsg)}</span><br>`;
     logOutput.scrollTop = logOutput.scrollHeight;
     
     writeBtn.disabled = false;
@@ -569,8 +636,7 @@ async function handleStreamBurn() {
   
   window.electronAPI.onStreamProgress((data) => {
     if (data.output) {
-      logOutput.innerHTML += data.output.replace(/\n/g, '<br>') + '<br>';
-      logOutput.scrollTop = logOutput.scrollHeight;
+      appendLog(logOutput, data.output);
     }
     
     if (data.status === 'connecting') {
@@ -584,7 +650,7 @@ async function handleStreamBurn() {
       if (data.speed && data.eta) {
         const downloaded = formatBytes(data.downloaded || 0);
         const total = formatBytes(data.total || 0);
-        logOutput.innerHTML += `<span style="color: #007bff;">${downloaded} / ${total} • ${data.speed} • ETA: ${data.eta}</span><br>`;
+        logOutput.innerHTML += `<span style="color: #007bff;">${escapeHTML(downloaded)} / ${escapeHTML(total)} • ${escapeHTML(data.speed)} • ETA: ${escapeHTML(data.eta)}</span><br>`;
         logOutput.scrollTop = logOutput.scrollHeight;
       }
     } else if (data.status === 'complete') {
@@ -619,7 +685,7 @@ async function handleStreamBurn() {
     const errorMsg = error.message || 'Unknown error occurred';
     alert(`❌ STREAM FAILED\n\n${errorMsg}\n\nPlease try "Download first" method instead.`);
     
-    logOutput.innerHTML += `<br><span style="color: #ff5555;">ERROR: ${errorMsg}</span><br>`;
+    logOutput.innerHTML += `<br><span style="color: #ff5555;">ERROR: ${escapeHTML(errorMsg)}</span><br>`;
     logOutput.scrollTop = logOutput.scrollHeight;
     
     writeBtn.disabled = false;
@@ -663,7 +729,7 @@ document.getElementById('selectImageBtn').addEventListener('click', async () => 
       
       window.electronAPI.onNRGConvertProgress((data) => {
         if (data.output) {
-          checksumResult.innerHTML += data.output.replace(/\n/g, '<br>');
+          checksumResult.innerHTML += escapeHTML(data.output).replace(/\n/g, '<br>');
         }
       });
       
@@ -698,11 +764,11 @@ document.getElementById('selectImageBtn').addEventListener('click', async () => 
         checksumResult.style.display = 'none';
       } finally {
         convertBtn.disabled = false;
-        convertBtn.textContent = 'Choose ISO/IMG/NRG/GZ File';
+        convertBtn.textContent = 'Choose ISO/IMG/NRG/GZ/XZ File';
         window.electronAPI.removeNRGConvertListener();
       }
-    } else if (image.isGZ) {
-      // .gz file - will be decompressed during writing
+    } else if (image.isGZ || image.isXZ) {
+      // .gz / .xz file - will be decompressed during writing
       selectedImage = image;
       document.getElementById('imageName').textContent = image.name;
       document.getElementById('imageSize').textContent = formatBytes(image.size) + ' (compressed)';
@@ -710,11 +776,12 @@ document.getElementById('selectImageBtn').addEventListener('click', async () => 
       
       const checksumResult = document.getElementById('checksumResult');
       checksumResult.style.display = 'block';
-      checksumResult.innerHTML = '<span style="color: #007bff; font-weight: bold;">ℹ️ Compressed .gz file detected</span><br>' +
+      const fmt = image.isXZ ? '.xz' : '.gz';
+      checksumResult.innerHTML = `<span style="color: #007bff; font-weight: bold;">ℹ️ Compressed ${fmt} file detected</span><br>` +
                                   'This file will be automatically decompressed while writing to the USB drive.<br>' +
                                   'No manual extraction needed!';
       
-      // .gz files are typically Linux images
+      // compressed images are typically Linux
       selectImageType('linux', true);
       
       // Enable step 2

@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Burner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -21,7 +23,7 @@
                 <p>✓ Linux ISO support (Ubuntu, Fedora, Debian, etc.)<br>
                 ✓ Windows 10/11 bootable USB (WoeUSB-style)<br>
                 ✓ UEFI:NTFS bootloader for maximum compatibility<br>
-                ✓ Compressed .img.gz file support (auto-decompress)<br>
+                ✓ Compressed .img.gz / .img.xz file support (auto-decompress)<br>
                 ✓ Nero (.nrg) file support with auto-conversion<br>
                 ✓ SHA256 checksum verification<br>
                 ✓ Safe Mode & Advanced Mode<br>
@@ -78,7 +80,7 @@
                 <input type="checkbox" id="advancedModeToggleModal">
             </label>
             
-            <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+            <p style="margin-top: 10px; font-size: 0.9em; color: var(--text-secondary)">
                 Safe Mode shows only removable USB drives. Toggle to Advanced Mode to see all drives.
             </p>
             
@@ -119,6 +121,7 @@
                 <p class="subtitle">Create bootable USB drives for Linux and Windows</p>
             </div>
             <div class="header-buttons">
+                <button class="theme-button" id="themeBtn">☀️ Light</button>
                 <button class="about-button" id="aboutBtn">About</button>
                 <button class="quit-button" id="quitBtn">Quit</button>
             </div>
@@ -139,13 +142,13 @@
             
             <!-- Local File Tab -->
             <div class="tab-content active" id="localFileContent">
-                <button class="button" id="selectImageBtn">Choose ISO/IMG/NRG/GZ File</button>
+                <button class="button" id="selectImageBtn">Choose ISO/IMG/NRG/GZ/XZ File</button>
             </div>
             
             <!-- URL Download Tab -->
             <div class="tab-content" id="urlContent">
                 <div style="margin-bottom: 15px;">
-                    <label for="imageUrl" style="display: block; margin-bottom: 5px; font-weight: 600;">Enter Image URL:</label>
+                    <label for="imageUrl" style="display: block; margin-bottom: 5px; font-weight: 600; color: var(--text-primary)">Enter Image URL:</label>
                     <input 
                         type="text" 
                         id="imageUrl" 
@@ -156,8 +159,8 @@
                 </div>
                 
                 <!-- Download Method Selection -->
-                <div style="margin: 15px 0; padding: 12px; background: #f0f8ff; border-left: 4px solid #007bff; border-radius: 4px;">
-                    <strong style="display: block; margin-bottom: 8px;">Download Method:</strong>
+                <div style="margin: 15px 0; padding: 12px; background: var(--bg-elevated); border-left: 4px solid var(--accent); border-radius: 4px; color: var(--text-primary)">
+                    <strong style="display: block; margin-bottom: 8px; color: var(--text-primary)">Download Method:</strong>
                     <label style="display: block; margin-bottom: 8px; cursor: pointer;">
                         <input type="radio" name="downloadMethod" value="download-first" checked style="margin-right: 8px;">
                         <strong>Download first, then burn</strong> (Safer - Can verify, retry if fails)
@@ -166,7 +169,7 @@
                         <input type="radio" name="downloadMethod" value="stream-to-usb" style="margin-right: 8px;">
                         <strong>Stream directly to USB</strong> ⚡ (Faster - No disk space needed, but can't retry)
                     </label>
-                    <div id="streamWarning" style="display: none; margin-top: 8px; padding: 8px; background: #fff3cd; border-left: 3px solid #ff9800; font-size: 0.9em;">
+                    <div id="streamWarning" style="display: none; margin-top: 8px; padding: 8px; background: var(--warn-bg); border-left: 3px solid var(--warn); font-size: 0.9em; color: var(--warn)">
                         <strong>⚠️ Warning:</strong> Streaming mode cannot verify checksums or retry on failure. Choose this only if you trust the source and have a stable connection.
                     </div>
                 </div>
@@ -185,15 +188,12 @@
                 </div>
                 
                 <!-- Popular Downloads -->
-                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                    <strong style="display: block; margin-bottom: 10px;">📌 Popular Downloads:</strong>
-                    <div style="font-size: 0.9em;">
-                        <a href="#" class="quick-link" data-url="https://pub.linuxmint.io/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso">Linux Mint 22.2 Cinnamon, </a>
-                        <a href="#" class="quick-link" data-url="https://releases.ubuntu.com/noble/ubuntu-24.04.3-desktop-amd64.iso">Ubuntu 24.04.3 LTS Desktop, </a>
-                        <a href="#" class="quick-link" data-url="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.1.0-amd64-netinst.iso">Debian 13 netinstall, </a>
-                        <a href="#" class="quick-link" data-url="https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/x86_64/iso/Fedora-Workstation-Live-42-1.1.x86_64.iso">Fedora 42 Workstation</a>
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 8px;">
+                    <strong style="display: block; margin-bottom: 10px; color: var(--text-primary)">📌 Popular Downloads:</strong>
+                    <div id="quickLinkList" style="font-size: 0.9em;">
+                        <span style="color: var(--text-muted)">Loading...</span>
                     </div>
-                    <p style="margin-top: 10px; font-size: 0.85em; color: #666;">💡 Tip: Always verify checksums from official sources!</p>
+                    <p style="margin-top: 10px; font-size: 0.85em; color: var(--text-muted)">💡 Tip: Always verify checksums from official sources!</p>
                 </div>
             </div>
             
@@ -242,7 +242,7 @@
             </div>
             
             <button class="button" id="openFlashModal">Open Drive Selection</button>
-            <p style="margin-top: 15px; color: #666; font-size: 0.95em;">
+            <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.95em;">
                 📋 Click the button above to select your USB drive and start flashing in a popup window.
             </p>
         </div>

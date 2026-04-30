@@ -92,10 +92,10 @@ ipcMain.handle('select-image', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
-      { name: 'Disk Images', extensions: ['iso', 'img', 'nrg', 'gz', 'ISO', 'IMG', 'NRG', 'GZ'] },
+      { name: 'Disk Images', extensions: ['iso', 'img', 'nrg', 'gz', 'xz', 'ISO', 'IMG', 'NRG', 'GZ', 'XZ'] },
       { name: 'ISO Files', extensions: ['iso', 'ISO'] },
       { name: 'IMG Files', extensions: ['img', 'IMG'] },
-      { name: 'Compressed Images', extensions: ['gz', 'GZ'] },
+      { name: 'Compressed Images', extensions: ['gz', 'xz', 'GZ', 'XZ'] },
       { name: 'NRG Files (Nero)', extensions: ['nrg', 'NRG'] },
       { name: 'All Files', extensions: ['*'] }
     ]
@@ -108,13 +108,15 @@ ipcMain.handle('select-image', async () => {
     // Check file type
     const isNRG = filePath.toLowerCase().endsWith('.nrg');
     const isGZ = filePath.toLowerCase().endsWith('.gz');
+    const isXZ = filePath.toLowerCase().endsWith('.xz');
     
     return {
       path: filePath,
       name: path.basename(filePath),
       size: stats.size,
       isNRG: isNRG,
-      isGZ: isGZ
+      isGZ: isGZ,
+      isXZ: isXZ
     };
   }
   return null;
@@ -154,8 +156,9 @@ async function listLinuxDrives(showAll = false) {
             }
             
             const isUSB = device.tran === 'usb';
-            const isRemovable = device.rm === '1';
-            const isHotplug = device.hotplug === '1';
+            // util-linux >= 2.37 returns booleans; older versions return '1'/'0' strings
+            const isRemovable = device.rm === '1' || device.rm === true;
+            const isHotplug = device.hotplug === '1' || device.hotplug === true;
             
             console.log(`Safe mode: ${device.name} - USB: ${isUSB}, RM: ${isRemovable}, HOTPLUG: ${isHotplug}`);
             
@@ -166,8 +169,8 @@ async function listLinuxDrives(showAll = false) {
             name: device.name,
             size: device.size,
             model: `${device.vendor || ''} ${device.model || ''}`.trim() || 'Unknown',
-            isRemovable: device.rm === '1' || device.hotplug === '1' || device.tran === 'usb',
-            isHotplug: device.hotplug === '1',
+            isRemovable: device.rm === '1' || device.rm === true || device.hotplug === '1' || device.hotplug === true || device.tran === 'usb',
+            isHotplug: device.hotplug === '1' || device.hotplug === true,
             mountpoint: device.mountpoint || null,
             transport: device.tran || 'unknown'
           }));
@@ -280,6 +283,17 @@ ipcMain.handle('cancel-download', async () => {
   if (currentDownload) {
     currentDownload.abort();
     currentDownload = null;
+    // Clean up any partial download files in /tmp
+    try {
+      const tmpFiles = await fs.readdir(os.tmpdir());
+      for (const f of tmpFiles) {
+        if (f.endsWith('.partial')) {
+          await fs.unlink(path.join(os.tmpdir(), f)).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error('Failed to clean up partial files:', e);
+    }
     return { success: true, message: 'Download cancelled' };
   }
   return { success: false, message: 'No download in progress' };
@@ -298,26 +312,11 @@ ipcMain.handle('validate-url', async (event, url) => {
 ipcMain.handle('write-image', async (event, { imagePath, targetDevice, imageType, advancedMode }) => {
   // CRITICAL SAFETY CHECK: Prevent writing to system drives (unless in advanced mode)
   if (!advancedMode) {
-    // More precise dangerous device check - only block specific common system drives
-    const dangerousDevices = [
-      '/dev/nvme0n1', '/dev/nvme1n1',
-      '/dev/hda', '/dev/vda', '/dev/xvda'
-    ];
-    
-    // Check for exact match only (not startsWith)
-    const isDangerous = dangerousDevices.includes(targetDevice);
-    
-    if (isDangerous) {
-      throw new Error(
-        `SECURITY BLOCK: Cannot write to ${targetDevice}.\n\n` +
-        `This appears to be a system drive.\n` +
-        `This operation is blocked to prevent accidental data loss.\n\n` +
-        `If you need to write to this drive,\n` +
-        `enable Advanced Mode and try again.`
-      );
-    }
-    
-    // Primary safety check: verify device is actually removable
+    // Rely solely on lsblk removable/hotplug/USB flags to determine safety.
+    // A hardcoded name blocklist (e.g. /dev/sda) is intentionally NOT used here because
+    // on some systems a legitimate USB drive may be assigned /dev/sda (e.g. when the OS
+    // lives on NVMe). The verifyRemovableDrive() check uses the kernel's own removable
+    // and transport flags, which are reliable regardless of device name.
     if (!await verifyRemovableDrive(targetDevice)) {
       throw new Error(
         `SECURITY BLOCK: Device ${targetDevice} is not detected as removable.\n\n` +
@@ -351,8 +350,9 @@ async function verifyRemovableDrive(targetDevice) {
           const device = data.blockdevices[0];
           // Check if USB, removable, or hotplug
           const isUSB = device.tran === 'usb';
-          const isRemovable = device.rm === '1';
-          const isHotplug = device.hotplug === '1';
+          // util-linux >= 2.37 returns booleans; older versions return '1'/'0' strings
+          const isRemovable = device.rm === '1' || device.rm === true;
+          const isHotplug = device.hotplug === '1' || device.hotplug === true;
           resolve(isUSB || isRemovable || isHotplug);
         } else {
           resolve(false);
@@ -457,8 +457,8 @@ async function downloadImageFromURL(event, urlString, saveToTemp = true) {
       // Handle redirects (301, 302, 307, 308)
       if ([301, 302, 307, 308].includes(response.statusCode)) {
         console.log(`Redirect to: ${response.headers.location}`);
-        fileStream.close();
-        fsSync.unlinkSync(tempPath + '.partial');
+        fileStream.destroy();
+        fsSync.unlink(tempPath + '.partial', () => {});
         return downloadImageFromURL(event, response.headers.location, saveToTemp)
           .then(resolve)
           .catch(reject);
@@ -541,6 +541,7 @@ async function downloadImageFromURL(event, urlString, saveToTemp = true) {
           
           // Check if it's a compressed file
           const isGZ = fileName.toLowerCase().endsWith('.gz');
+          const isXZ = fileName.toLowerCase().endsWith('.xz');
           const isNRG = fileName.toLowerCase().endsWith('.nrg');
           
           resolve({
@@ -548,6 +549,7 @@ async function downloadImageFromURL(event, urlString, saveToTemp = true) {
             name: fileName,
             size: stats.size,
             isGZ: isGZ,
+            isXZ: isXZ,
             isNRG: isNRG,
             isDownloaded: true
           });
@@ -594,7 +596,9 @@ async function streamToUSB(event, urlString, targetDevice, imageType) {
     const parsedUrl = new URL(urlString);
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
     const fileName = path.basename(parsedUrl.pathname);
-    const isCompressed = fileName.toLowerCase().endsWith('.gz');
+    const isGZ = fileName.toLowerCase().endsWith('.gz');
+    const isXZ = fileName.toLowerCase().endsWith('.xz');
+    const isCompressed = isGZ || isXZ;
     
     console.log(`Streaming from: ${urlString}`);
     console.log(`Target device: ${targetDevice}`);
@@ -642,15 +646,15 @@ async function streamToUSB(event, urlString, targetDevice, imageType) {
       const tempScriptPath = path.join(os.tmpdir(), `stream_to_usb_${Date.now()}.sh`);
       
       let scriptContent;
-      if (isCompressed) {
-        // For .gz files: decompress on-the-fly
+      if (isGZ) {
+        // For .gz files: decompress on-the-fly with gunzip
         scriptContent = `#!/bin/bash
 set -euo pipefail
 
 TARGET_DEVICE="$1"
 
-echo "Streaming compressed image to $TARGET_DEVICE"
-echo "Decompressing on-the-fly..."
+echo "Streaming .gz compressed image to $TARGET_DEVICE"
+echo "Decompressing on-the-fly with gunzip..."
 
 # Unmount all partitions
 for partition in \${TARGET_DEVICE}*; do
@@ -659,12 +663,49 @@ for partition in \${TARGET_DEVICE}*; do
   fi
 done
 
-# Kill processes using device
-fuser -km "$TARGET_DEVICE" 2>/dev/null || true
+# Kill processes using device (SIGTERM first, then SIGKILL)
+fuser -k "$TARGET_DEVICE" 2>/dev/null || true
+sleep 1
+fuser -k -9 "$TARGET_DEVICE" 2>/dev/null || true
 sleep 1
 
 # Stream stdin through gunzip to device
 gunzip -c | dd of="$TARGET_DEVICE" bs=4M status=progress conv=fsync oflag=direct
+
+# Sync and refresh
+sync
+sleep 2
+partprobe "$TARGET_DEVICE" 2>/dev/null || true
+udevadm settle --timeout=10 2>/dev/null || true
+sync
+
+echo "Stream complete!"
+`;
+      } else if (isXZ) {
+        // For .xz files: decompress on-the-fly with xz
+        scriptContent = `#!/bin/bash
+set -euo pipefail
+
+TARGET_DEVICE="$1"
+
+echo "Streaming .xz compressed image to $TARGET_DEVICE"
+echo "Decompressing on-the-fly with xz..."
+
+# Unmount all partitions
+for partition in \${TARGET_DEVICE}*; do
+  if [ "$partition" != "$TARGET_DEVICE" ] && [ -b "$partition" ]; then
+    umount "$partition" 2>/dev/null || true
+  fi
+done
+
+# Kill processes using device (SIGTERM first, then SIGKILL)
+fuser -k "$TARGET_DEVICE" 2>/dev/null || true
+sleep 1
+fuser -k -9 "$TARGET_DEVICE" 2>/dev/null || true
+sleep 1
+
+# Stream stdin through xz to device
+xz -d -c | dd of="$TARGET_DEVICE" bs=4M status=progress conv=fsync oflag=direct
 
 # Sync and refresh
 sync
@@ -691,8 +732,10 @@ for partition in \${TARGET_DEVICE}*; do
   fi
 done
 
-# Kill processes using device
-fuser -km "$TARGET_DEVICE" 2>/dev/null || true
+# Kill processes using device (SIGTERM first, then SIGKILL)
+fuser -k "$TARGET_DEVICE" 2>/dev/null || true
+sleep 1
+fuser -k -9 "$TARGET_DEVICE" 2>/dev/null || true
 sleep 1
 
 # Stream stdin directly to device
@@ -801,12 +844,14 @@ echo "Stream complete!"
 }
 
 async function writeLinuxImage(event, imagePath, targetDevice) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      console.log(`Writing Linux image: ${imagePath} to ${targetDevice}`);
+  console.log(`Writing Linux image: ${imagePath} to ${targetDevice}`);
+  return new Promise((resolve, reject) => {
+    (async () => { try {
       
-      // Check if file is compressed (.gz)
-      const isCompressed = imagePath.toLowerCase().endsWith('.gz');
+      // Check if file is compressed (.gz or .xz)
+      const isGZ = imagePath.toLowerCase().endsWith('.gz');
+      const isXZ = imagePath.toLowerCase().endsWith('.xz');
+      const isCompressed = isGZ || isXZ;
       
       // Extract script from asar to temp directory
       const tempScriptPath = path.join(os.tmpdir(), `burn_linux_${Date.now()}.sh`);
@@ -817,12 +862,12 @@ set -euo pipefail
 
 IMAGE_PATH="$1"
 TARGET_DEVICE="$2"
-IS_COMPRESSED="$3"
+COMPRESS_TYPE="$3"
 
 echo "=== Linux Image Burner ==="
 echo "Image: $IMAGE_PATH"
 echo "Target: $TARGET_DEVICE"
-echo "Compressed: $IS_COMPRESSED"
+echo "Compression: $COMPRESS_TYPE"
 echo ""
 
 # Step 1: Unmount all partitions on the target device
@@ -838,8 +883,10 @@ done
 umount \${TARGET_DEVICE}* 2>/dev/null || true
 umount \${TARGET_DEVICE} 2>/dev/null || true
 
-# Kill any processes using the device
-fuser -km "$TARGET_DEVICE" 2>/dev/null || true
+# Kill any processes using the device (SIGTERM first, then SIGKILL)
+fuser -k "$TARGET_DEVICE" 2>/dev/null || true
+sleep 1
+fuser -k -9 "$TARGET_DEVICE" 2>/dev/null || true
 sleep 1
 
 echo "✓ All partitions unmounted"
@@ -850,9 +897,12 @@ echo "💾 Writing image to $TARGET_DEVICE..."
 echo "This may take several minutes..."
 echo ""
 
-if [ "$IS_COMPRESSED" = "true" ]; then
+if [ "$COMPRESS_TYPE" = "gz" ]; then
   echo "Decompressing and writing .gz file..."
   gunzip -c "$IMAGE_PATH" | dd of="$TARGET_DEVICE" bs=4M status=progress conv=fsync oflag=direct
+elif [ "$COMPRESS_TYPE" = "xz" ]; then
+  echo "Decompressing and writing .xz file..."
+  xz -d -c "$IMAGE_PATH" | dd of="$TARGET_DEVICE" bs=4M status=progress conv=fsync oflag=direct
 else
   echo "Writing image file..."
   dd if="$IMAGE_PATH" of="$TARGET_DEVICE" bs=4M status=progress conv=fsync oflag=direct
@@ -907,7 +957,9 @@ echo ""
       
       event.sender.send('write-progress', { output: `Starting Linux image write...\n\n` });
       
-      const process = spawn('pkexec', ['bash', tempScriptPath, imagePath, targetDevice, isCompressed.toString()]);
+      const compressType = isGZ ? 'gz' : isXZ ? 'xz' : 'none';
+
+      const process = spawn('pkexec', ['bash', tempScriptPath, imagePath, targetDevice, compressType]);
       
       let totalWritten = 0;
       let errorOutput = '';
@@ -980,14 +1032,14 @@ echo ""
     } catch (error) {
       console.error('writeLinuxImage error:', error);
       reject(error);
-    }
+    } })(); // end async IIFE
   });
 }
 
 async function writeWindowsImage(event, imagePath, targetDevice) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      console.log(`Writing Windows image: ${imagePath} to ${targetDevice}`);
+  console.log(`Writing Windows image: ${imagePath} to ${targetDevice}`);
+  return new Promise((resolve, reject) => {
+    (async () => { try {
       
       // Extract script from asar to temp directory
       const tempScriptPath = path.join(os.tmpdir(), `create_win_usb_${Date.now()}.sh`);
@@ -1006,7 +1058,8 @@ async function writeWindowsImage(event, imagePath, targetDevice) {
       
       event.sender.send('write-progress', { output: `Starting Windows USB creation...\n\n` });
 
-      const process = spawn('pkexec', ['bash', tempScriptPath, imagePath, targetDevice]);
+      const appDir = __dirname;
+      const process = spawn('pkexec', ['bash', tempScriptPath, imagePath, targetDevice, appDir]);
       
       let errorOutput = '';
       
@@ -1060,6 +1113,6 @@ async function writeWindowsImage(event, imagePath, targetDevice) {
     } catch (error) {
       console.error('writeWindowsImage error:', error);
       reject(error);
-    }
+    } })(); // end async IIFE
   });
 }

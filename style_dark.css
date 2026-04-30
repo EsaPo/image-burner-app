@@ -38,37 +38,6 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
-/* ── Light theme ── */
-body.light {
-  --bg-base:        #f0eeeb;
-  --bg-surface:     #faf9f7;
-  --bg-elevated:    #ffffff;
-  --bg-hover:       #eceae6;
-  --border:         #d4d0c8;
-  --border-focus:   #3a7bc8;
-
-  --accent:         #3a7bc8;
-  --accent-dim:     #2a5fa0;
-  --accent-glow:    rgba(58, 123, 200, 0.12);
-
-  --danger:         #cc3333;
-  --danger-dim:     #a82222;
-  --danger-glow:    rgba(204, 51, 51, 0.1);
-
-  --success:        #2a9470;
-  --success-bg:     rgba(42, 148, 112, 0.08);
-  --success-border: rgba(42, 148, 112, 0.3);
-
-  --warn:           #b96d10;
-  --warn-bg:        rgba(185, 109, 16, 0.08);
-  --warn-border:    rgba(185, 109, 16, 0.3);
-
-  --text-primary:   #1a1a18;
-  --text-secondary: #5a5850;
-  --text-muted:     #9a9488;
-  --log-text:       #1e2530;
-}
-
 * {
   margin: 0;
   padding: 0;
@@ -85,7 +54,6 @@ body {
   color: var(--text-primary);
   padding: 24px 20px;
   overflow-y: auto;
-  transition: background 0.25s, color 0.25s;
 }
 
 /* ── Scrollbar ── */
@@ -162,25 +130,6 @@ h1 {
   background: var(--danger-glow);
 }
 
-.theme-button {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 7px 16px;
-  border-radius: var(--radius-xl);
-  font-size: 0.85em;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-  font-family: var(--font-ui);
-}
-
-.theme-button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-glow);
-}
-
 /* ── Steps ── */
 .step {
   background: var(--bg-elevated);
@@ -213,7 +162,7 @@ h1 {
   height: 30px;
   border-radius: 50%;
   background: var(--accent-dim);
-  color: #ffffff;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -234,7 +183,7 @@ h1 {
 /* ── Buttons ── */
 .button {
   background: var(--accent-dim);
-  color: #ffffff;
+  color: var(--text-primary);
   border: 1px solid var(--accent);
   padding: 10px 24px;
   border-radius: var(--radius-md);
@@ -247,7 +196,6 @@ h1 {
 
 .button:hover:not(:disabled) {
   background: var(--accent);
-  color: #ffffff;
   box-shadow: 0 4px 16px var(--accent-glow);
   transform: translateY(-1px);
 }
@@ -263,12 +211,11 @@ h1 {
 .button.danger {
   background: var(--danger-dim);
   border-color: var(--danger);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .button.danger:hover:not(:disabled) {
   background: var(--danger);
-  color: #ffffff;
   box-shadow: 0 4px 16px var(--danger-glow);
 }
 
@@ -321,7 +268,7 @@ h1 {
 
 .modal-close {
   background: var(--accent-dim);
-  color: #ffffff;
+  color: var(--text-primary);
   border: 1px solid var(--accent);
   padding: 10px 28px;
   border-radius: var(--radius-md);
